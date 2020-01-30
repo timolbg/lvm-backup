@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import logging
 import argparse
 import yaml
@@ -74,7 +75,9 @@ class Backup:
         logging.info("\nbackup COMPLETED (%s)" % self.snapshot.volume.lv)
 
     def __run_backup(self):
-        runCommand("RESTIC_PASSWORD='%s' restic -r %s backup %s" % (config.password, self.volume.to_mount_dir(), self.snapshot.volume.to_mount_dir()) )
+        runCommand("RESTIC_PASSWORD='%s' restic -r %s backup %s" % 
+            (config.password, self.volume.to_mount_dir(), self.snapshot.volume.to_mount_dir()), 
+            printOutput=True )
 
     def close(self):
         self.volume.umount()
@@ -92,8 +95,7 @@ class Backup:
             keep += f"--keep-monthly {config.monthlySnapshots} "
         if config.purge:
             keep += "--purge"
-        subprocess.run("RESTIC_PASSWORD='%s' restic -r %s forget %s" % 
-            (config.password, self.volume.to_mount_dir(), keep), shell=True)
+        runCommand("RESTIC_PASSWORD='%s' restic -r %s forget %s" % (config.password, self.volume.to_mount_dir(), keep), printOutput=True)
     
 class Snapshot:
     def __init__(self, source):
@@ -170,21 +172,19 @@ class LVolume:
     def unmap_raw(self):
         runCommand("kpartx -d %s" % self.to_device())
 
-def runCommand(*args):
-    logging.info("Running command" + str(args))
-    (code, result) = subprocess.getstatusoutput(args)
-    if (code != 0):
-        logging.error(result)
+def runCommand(*args, printOutput=False):
+    result = runCommandRetVal(*args, printOutput=printOutput)    
+    if (result !=0):
         raise BackupException("Execution failed: " + str(args))
-    else:
-        logging.debug(result)
 
-    return result
-
-def runCommandRetVal(*args):
-    logging.info("Running command" + str(args))
-    (code, _) = subprocess.getstatusoutput(args)
-    return code
+def runCommandRetVal(*args, printOutput=False):
+    logging.debug("Running command" + str(args))
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (out, err) = p.communicate()
+    logging.log(logging.INFO if printOutput else logging.DEBUG, out.decode())
+    if (err):
+        logging.error(err.decode())
+    return p.returncode
 
 def check_dependencies():
     for cmd in [RESTIC, LVS]:
@@ -199,12 +199,23 @@ def main():
     global config
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", help="backup config file", required=True)
-    parser.add_argument("-d", "--debug", help="enable debug logging", type=bool, required=False)
-    parser.add_argument("-p", "--purge", help="also purge repository", type=bool, required=False)
+    parser.add_argument("-d", "--debug", help="enable debug logging", action="store_true")
+    parser.add_argument("-p", "--purge", help="also purge repository", action="store_true")
     parser.add_argument("command", help="command to execute (backup|cleanup)", choices=["backup", "cleanup"])
     args = parser.parse_args()
 
-    logging.basicConfig(format='%(asctime)s - %(message)s', level= logging.DEBUG if args.debug else logging.INFO)
+    # logging.basicConfig(format='%(asctime)s - %(message)s', )
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(message)s')
+    h1 = logging.StreamHandler(sys.stdout)
+    h1.setLevel(logging.DEBUG if args.debug else logging.INFO)
+    h1.setFormatter(formatter)
+    h2 = logging.StreamHandler(sys.stderr)
+    h2.setLevel(logging.WARNING)
+    h2.setFormatter(formatter)
+    logger.addHandler(h1)
+    logger.addHandler(h2)
 
     config = Config(args.config, args.purge)
     
@@ -238,6 +249,7 @@ def cleanup():
         backup.cleanup()
     finally:
         backup.close()
+
 
 if __name__ == "__main__":
     main()
