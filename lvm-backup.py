@@ -173,16 +173,16 @@ class LVolume:
         runCommand("kpartx -d %s" % self.to_device())
 
 def runCommand(*args, printOutput=False):
-    result = runCommandRetVal(*args, printOutput=printOutput)    
+    result = runCommandRetVal(*args, printOutput=printOutput, ignore=False)    
     if (result !=0):
         raise BackupException("Execution failed: " + str(args))
 
-def runCommandRetVal(*args, printOutput=False):
+def runCommandRetVal(*args, printOutput=False, ignore=True):
     logging.debug("Running command" + str(args))
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (out, err) = p.communicate()
     logging.log(logging.INFO if printOutput else logging.DEBUG, out.decode())
-    if (err):
+    if (err and not ignore):
         logging.error(err.decode())
     return p.returncode
 
