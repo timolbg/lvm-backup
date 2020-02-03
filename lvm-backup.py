@@ -16,7 +16,7 @@ class BackupException(Exception):
     pass
 
 class Config:
-    def __init__(self, configFile, purge):
+    def __init__(self, configFile, prune):
         with open(configFile, 'r') as stream:
             configYaml = yaml.safe_load(stream)
             self.mounts_dir = configYaml["mounts_dir"]
@@ -28,7 +28,7 @@ class Config:
             self.weeklySnapshots = configYaml.get("weeklySnapshots")
             self.monthlySnapshots = configYaml.get("monthlySnapshots")
             self.yearlySnapshots = configYaml.get("yearlySnapshots")
-            self.purge = purge
+            self.prune = prune
             self.sources = []
             for vg in configYaml["VGs"]:
                 for lv in vg["LVs"]:
@@ -93,8 +93,8 @@ class Backup:
             keep += f"--keep-weekly {config.weeklySnapshots} "
         if config.monthlySnapshots:
             keep += f"--keep-monthly {config.monthlySnapshots} "
-        if config.purge:
-            keep += "--purge"
+        if config.prune:
+            keep += "--prune"
         runCommand("RESTIC_PASSWORD='%s' restic -r %s forget %s" % (config.password, self.volume.to_mount_dir(), keep), printOutput=True)
     
 class Snapshot:
@@ -200,7 +200,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", help="backup config file", required=True)
     parser.add_argument("-d", "--debug", help="enable debug logging", action="store_true")
-    parser.add_argument("-p", "--purge", help="also purge repository", action="store_true")
+    parser.add_argument("-p", "--prune", help="also prune repository", action="store_true")
     parser.add_argument("command", help="command to execute (backup|cleanup)", choices=["backup", "cleanup"])
     args = parser.parse_args()
 
@@ -217,7 +217,7 @@ def main():
     logger.addHandler(h1)
     logger.addHandler(h2)
 
-    config = Config(args.config, args.purge)
+    config = Config(args.config, args.prune)
     
     try:
         check_dependencies()
